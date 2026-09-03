@@ -1,0 +1,106 @@
+---
+title: "Hydra oligactis LPS treatment RNA-Seq"
+author: "Jácint Tökölyi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r Read in data}
+library(DESeq2); library(ggplot2); library(dplyr); library(ggpubr); library(stringr)
+library(ragg)
+
+x <- read.csv("/storage/LPS_RNASeq/06_salmon/lps2_cdhit.isoform.counts.matrix",sep="\t")
+
+dat <- data.frame(sampleID = names(x)[-1])
+dat$Group <- factor(substring(dat$sampleID, 5, 5), levels=c("C","L","H"))
+
+row.names(x) <- x[,1]; x <- round(x[,(-1)])
+```
+
+## Prepare PCA
+```{r DESeq2 PCA}
+dds <- DESeqDataSetFromMatrix(countData = x,
+                              colData = dat,
+                              design= ~ Group)
+dds <- dds[rowSums(counts(dds)>=10) >=3,]
+dds_lrt <- DESeq(dds, test = "LRT", reduced = ~ 1)
+res_lrt <- results(dds_lrt)
+sig_genes <- rownames(res_lrt)[which(res_lrt$padj < 0.05 & !is.na(res_lrt$padj))]
+rld <- rlog(dds, blind = FALSE)
+rld_sig <- rld[sig_genes, ]
+
+pcaData <- plotPCA(rld_sig, intgroup=c("Group"), returnData = TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+pca <- ggplot(pcaData, aes(x = PC1, y = PC2,color=Group))+geom_point(size=10)+
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) + 
+  ylab(paste0("PC2: ", percentVar[2], "% variance"))
+
+ragg::agg_tiff(filename="/storage/LPS_RNASeq/pca.tiff",
+               width=6,height=5,units="in",res=300,scaling=1)
+pca+theme_minimal()+
+  scale_color_manual(values=c("C"="grey70","L"="#F9E075","H"="#fc8d62"),
+    labels=c("C"="Control","L"="Low LPS","H"="High LPS"),
+                                       name="LPS Treatment")+
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        legend.position = "bottom")
+dev.off()
+```
+
+## Perform pairwise comparison of the groups using DESeq2
+
+```{r DESeq2 pairwise comparisons}
+dds <- DESeqDataSetFromMatrix(countData = x,
+                              colData = dat,
+                              design= ~ Group)
+dds <- dds[rowSums(counts(dds)>=10) >=3,]
+res <- DESeq(dds)
+resL <- lfcShrink(res, coef = "Group_L_vs_C", type="apeglm") %>% data.frame()%>%
+  tibble::rownames_to_column(var="transcript_id")
+resH <- lfcShrink(res, coef = "Group_H_vs_C", type="apeglm") %>% data.frame()%>%
+  tibble::rownames_to_column(var="transcript_id")
+```
+
+## Volcano plots
+
+```{r Volcano plot}
+cols <- c("Up-regulated" = "#CA0020", "Down-regulated" = "#0571B0", "Not affected" = "white") 
+sizes <- c("Up-regulated" = 3, "Down-regulated" = 3, "Not affected" = 1) 
+alphas <- c("Up-regulated" = 0.5, "Down-regulated" = 0.5, "Not affected" = 0.5)
+
+resL$gene_type <- ifelse(resL$padj>0.01 | abs(resL$log2FoldChange)<1 , "Not affected",
+       ifelse(resL$log2FoldChange < -1 , "Down-regulated", "Up-regulated"))
+
+resH$gene_type <- ifelse(resH$padj>0.01 | abs(resH$log2FoldChange)<1 , "Not affected",
+       ifelse(resH$log2FoldChange < -1 , "Down-regulated", "Up-regulated"))
+
+v1 <- ggplot(resL[which(!is.na(resL$padj)),], aes(y=-log10(padj), x=log2FoldChange, 
+                       size=gene_type, fill=gene_type, alpha=gene_type))+
+  geom_point(shape=21,col="black")+theme_bw()+ylim(0,72)+
+  geom_vline(xintercept=c(-1,1), linetype="dashed")+
+  geom_hline(yintercept = -log10(0.01), linetype="dashed")+
+  scale_size_manual(name="", values=sizes)+
+  scale_fill_manual(name="", values=cols)+
+  scale_alpha_manual(name="", values=alphas)+
+  xlab(bquote(~Log[2] ~ "fold change"))+ylab(bquote(~-Log[10] ~ P[adj]))+
+  labs(title="Low LPS vs. Control")
+
+v2 <- ggplot(resH[which(!is.na(resH$padj)),], aes(y=-log10(padj), x=log2FoldChange, 
+                       size=gene_type, fill=gene_type, alpha=gene_type))+
+  geom_point(shape=21,col="black")+theme_bw()+ylim(0,72)+
+  geom_vline(xintercept=c(-1,1), linetype="dashed")+
+  geom_hline(yintercept = -log10(0.01), linetype="dashed")+
+  scale_size_manual(values=sizes)+
+  scale_fill_manual(values=cols)+
+  scale_alpha_manual(values=alphas)+
+  xlab(bquote(~Log[2] ~ "fold change"))+ylab(bquote(~-Log[10] ~ P[adj]))+
+  labs(title="High LPS vs. Control")
+
+library(patchwork)
+
+ragg::agg_tiff(filename="/storage/LPS_RNASeq/volcano.tiff",
+               width=6,height=5,units="in",res=300,scaling=1)
+ggarrange(v1, v2, common.legend=T, legend="bottom")
+dev.off()
+
+```
+
