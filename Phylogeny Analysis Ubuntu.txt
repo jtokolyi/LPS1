@@ -1,0 +1,11 @@
+### Phylogeny Analysis : Ubuntu ###
+## 1. Set the directory where we save the fasta file (Pseudomonas.fasta)
+cd /mnt/c/Users/Retno/Downloads/ubuntu
+
+## 2. Sequence alignment with mafft (output = pseudomonas_aligned.fasta)
+mafft Pseudomonas.fasta > pseudomonas_aligned.fasta
+
+## 3. Construct the phylogeny tree with IQ-TREE (output = pseudomonas_aligned.fasta.treefile)
+iqtree2 -s pseudomonas_aligned.fasta -m MFP -B 1000 -T AUTO
+
+## 4. Visualizing phylogeny tree with R (Reading_Phylogeny_Tree.R)
