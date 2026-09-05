@@ -58,6 +58,24 @@ resL <- lfcShrink(res, coef = "Group_L_vs_C", type="apeglm") %>% data.frame()%>%
   tibble::rownames_to_column(var="transcript_id")
 resH <- lfcShrink(res, coef = "Group_H_vs_C", type="apeglm") %>% data.frame()%>%
   tibble::rownames_to_column(var="transcript_id")
+
+trin <- read.csv("/storage/LPS_RNASeq/07_trinotate/Trinotate_lps2_cdhit.xls",sep="\t")
+trin$GENE <- sapply(strsplit(trin$sprot_Top_BLASTP_hit, split="^",fixed=T),"[",1)
+trin$FullName <- sapply(strsplit(sapply(strsplit(trin$sprot_Top_BLASTP_hit, split=";"),"[",1),split="Full="),"[",2)
+
+resL <- merge(resL, trin[, c("transcript_id", "FullName", "GENE")], 
+              by = "transcript_id", all.x = TRUE)
+resH <- merge(resH, trin[, c("transcript_id", "FullName", "GENE")], 
+              by = "transcript_id", all.x = TRUE)
+
+resL <- resL[!duplicated(resL$transcript_id),] %>% arrange(desc(abs(log2FoldChange)))
+resH <- resH[!duplicated(resH$transcript_id),] %>% arrange(desc(abs(log2FoldChange)))
+
+resL$GENE <- sapply(strsplit(resL$GENE, split="_"), "[",1)
+resH$GENE <- sapply(strsplit(resH$GENE, split="_"), "[",1)
+
+resL$plot_gene <- ifelse(resL$GENE %in% c("RIOK3", "TGBR3", "MOB3A", "MYPT1", "CASP3", "DMBT1", "SON", "APX1"), resL$GENE, NA)
+resH$plot_gene <- ifelse(resH$GENE %in% c("RIOK3", "TGBR3", "MOB3A", "MYPT1", "CASP3", "DMBT1", "SON", "APX1"), resH$GENE, NA)
 ```
 
 ## Volcano plots
@@ -73,27 +91,147 @@ resL$gene_type <- ifelse(resL$padj>0.01 | abs(resL$log2FoldChange)<1 , "Not affe
 resH$gene_type <- ifelse(resH$padj>0.01 | abs(resH$log2FoldChange)<1 , "Not affected",
        ifelse(resH$log2FoldChange < -1 , "Down-regulated", "Up-regulated"))
 
+resL$plot_gene[resL$gene_type=="Not affected"] <- NA
+resH$plot_gene[resH$gene_type=="Not affected"] <- NA
+
 v1 <- ggplot(resL[which(!is.na(resL$padj)),], aes(y=-log10(padj), x=log2FoldChange, 
-                       size=gene_type, fill=gene_type, alpha=gene_type))+
+                       size=gene_type, fill=gene_type, alpha=0.5))+
   geom_point(shape=21,col="black")+theme_bw()+ylim(0,72)+
+  guides(alpha="none")+ 
+  ggrepel::geom_text_repel(aes(label=plot_gene),size=3, nudge_y=5)+
   geom_vline(xintercept=c(-1,1), linetype="dashed")+
   geom_hline(yintercept = -log10(0.01), linetype="dashed")+
   scale_size_manual(name="", values=sizes)+
   scale_fill_manual(name="", values=cols)+
-  scale_alpha_manual(name="", values=alphas)+
   xlab(bquote(~Log[2] ~ "fold change"))+ylab(bquote(~-Log[10] ~ P[adj]))+
   labs(title="Low LPS vs. Control")
 
-v2 <- ggplot(resH[which(!is.na(resH$padj)),], aes(y=-log10(padj), x=log2FoldChange, 
-                       size=gene_type, fill=gene_type, alpha=gene_type))+
-  geom_point(shape=21,col="black")+theme_bw()+ylim(0,72)+
-  geom_vline(xintercept=c(-1,1), linetype="dashed")+
-  geom_hline(yintercept = -log10(0.01), linetype="dashed")+
-  scale_size_manual(values=sizes)+
-  scale_fill_manual(values=cols)+
-  scale_alpha_manual(values=alphas)+
-  xlab(bquote(~Log[2] ~ "fold change"))+ylab(bquote(~-Log[10] ~ P[adj]))+
-  labs(title="High LPS vs. Control")
+v2 <- ggplot(resH[which(!is.na(resH$padj)),],
+  aes(y = -log10(padj), x = log2FoldChange, size = gene_type, 
+      fill = gene_type, alpha = 0.5)) +
+  guides(alpha="none")+
+  geom_point(shape = 21, col = "black") + 
+  # TGBR3
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "TGBR3" & !is.na(padj)),
+    aes(label = plot_gene),
+    nudge_x = 5,
+    nudge_y = 31,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # RIOK3
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "RIOK3" & !is.na(padj)),
+    aes(label = plot_gene),
+    nudge_x = 6,
+    nudge_y = 30,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # DMBT1
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "DMBT1" & !is.na(padj)),
+    aes(label = plot_gene),
+    nudge_x = 5,
+    nudge_y = 19,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # MOB3A
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "MOB3A" & !is.na(padj)),
+    aes(label = plot_gene),
+    nudge_x = -0.8,
+    nudge_y = 10,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # MYPT1
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "MYPT1" & !is.na(padj)),
+    aes(label = plot_gene),
+    nudge_x = 6,
+    nudge_y = 27,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # CASP3
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "CASP3" & !is.na(padj))[1,],
+    aes(label = plot_gene),
+    nudge_x = 0.5,
+    nudge_y = 6,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # SON
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "SON" & !is.na(padj)),
+    aes(label = plot_gene),
+    nudge_x = 0.2,
+    nudge_y = 7.5,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  # APX1
+  ggrepel::geom_text_repel(
+    data = subset(resH, plot_gene == "APX1" & !is.na(padj))[1,],
+    aes(label = plot_gene),
+    nudge_x = 0,
+    nudge_y = -3,
+    size = 3,
+    box.padding = 0.4,
+    point.padding = 0.5,
+    force = 1,
+    force_pull = 0.2,
+    min.segment.length = 0,
+    segment.color = "grey50"
+  ) +
+  theme_bw() +
+  coord_cartesian(ylim = c(0, 72)) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.01),linetype = "dashed") +
+  scale_size_manual(values = sizes) +
+  scale_fill_manual(values = cols) +
+  xlab(bquote(~Log[2] ~ "fold change")) +
+  ylab(bquote(~-Log[10] ~ P[adj])) +
+  labs(title = "High LPS vs. Control")
 
 library(patchwork)
 
